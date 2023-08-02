@@ -298,48 +298,58 @@ foreach my $mbx (sort @mailboxes) {
             
             my $mbox_glob = $conf{'imap:mbox_glob'};
             
-            # sa-learn command parameters
-            my $cmd = $conf{'sa:learn_cmd'};
-            $cmd .= ' --' . $learn;
-            $cmd .= ' --debug' if ( $conf{'sa:debug'} =~ /^[yY]/ );
-            $cmd .= " --siteconfigpath='$conf{'sa:site_config_path'}'" if ( $conf{'sa:site_config_path'} );
-            $cmd .= " --prefspath='$conf{'sa:prefs_file'}'" if ( $conf{'sa:prefs_file'} );
-            $cmd .= ' --no-sync' if ( $conf{'sa:sync_once'} =~ /^[yY]/ );
-            $cmd .= " --dbpath='$virtual_config_dir/bayes'" if ( $conf{'sa:virtual_config_dir'} and ($conf{'sa:bayes_storage'} =~ /^berkely/) );
-            $cmd .= " --username='$user'" if ( $conf{'sa:virtual_config_dir'} );
-            $cmd .= " '$learn_path$mbox_glob'";
-            $cmd .= ' 2>&1';
-
-            log_msg('debug', "  Executing '$cmd'");
-            my $do_purge = 0;
-            if ( $simulate ) {
-                log_msg('notice', "  Simulate: '$cmd'");
-                $do_purge = 1;
-                $mails_learned += 1;
-            } elsif ( open(my $fh, "-|", $cmd) ) {
-                while (<$fh>) {
-                    chomp;
-                    my $line = $_;
-                    log_msg('notice', "  sa-learn> $line");
-                    if ( $line =~ /Learned\s+tokens\s+from\s+(\d+)\s+message/ ) {
-                        $mails_learned += int($1);
-                    }
-                }
-                close($fh);
-                if ( $? == 0 ) {
+            my $mailbox_folder = get_imap_folder_name($domain, $user, $learn_folder);
+            my $mbexamine_output = `mbexamine "$mailbox_folder"`;
+            my ($number_of_messages) = $mbexamine_output =~ /Number of Messages:\s+(\d+)/;
+            if ((defined $number_of_messages) and ($number_of_messages > 0)) {
+	        log_msg('debug', "Number of Messages not purged so far: $number_of_messages");
+                # sa-learn command parameters
+                my $cmd = $conf{'sa:learn_cmd'};
+                $cmd .= ' --' . $learn;
+                $cmd .= ' --debug' if ( $conf{'sa:debug'} =~ /^[yY]/ );
+                $cmd .= " --siteconfigpath='$conf{'sa:site_config_path'}'" if ( $conf{'sa:site_config_path'} );
+                $cmd .= " --prefspath='$conf{'sa:prefs_file'}'" if ( $conf{'sa:prefs_file'} );
+                $cmd .= ' --no-sync' if ( $conf{'sa:sync_once'} =~ /^[yY]/ );
+                $cmd .= " --dbpath='$virtual_config_dir/bayes'" if ( $conf{'sa:virtual_config_dir'} and ($conf{'sa:bayes_storage'} =~ /^berkely/) );
+                $cmd .= " --username='$user'" if ( $conf{'sa:virtual_config_dir'} );
+                $cmd .= " '$learn_path$mbox_glob'";
+                $cmd .= ' 2>&1';
+    
+                log_msg('debug', "  Executing '$cmd'");
+                my $do_purge = 0;
+                if ( $simulate ) {
+                    log_msg('notice', "  Simulate: '$cmd'");
                     $do_purge = 1;
+                    $mails_learned += 1;
+                } elsif ( open(my $fh, "-|", $cmd) ) {
+                    while (<$fh>) {
+                        chomp;
+                        my $line = $_;
+                        log_msg('notice', "  sa-learn> $line");
+                        if ( $line =~ /Learned\s+tokens\s+from\s+(\d+)\s+message/ ) {
+                            $mails_learned += int($1);
+                        }
+                    }
+                    close($fh);
+                    if ( $? == 0 ) {
+                        $do_purge = 1;
+                    } else {
+                        log_msg('error', "  Learning $learn using command '$cmd' failed: $?");
+                    }
                 } else {
-                    log_msg('error', "  Learning $learn using command '$cmd' failed: $?");
+                    log_msg('error', "  Failed to run sa:learn_cmd '$cmd': $!");
                 }
+                if ( $do_purge and ($conf{'mailbox:remove_' . $learn} =~ /^[yY]/) ) {
+                    # delete learned mails
+                    log_msg('notice', "  Purging learned $learn mails from folder '$learn_folder'");
+                    purge_mailbox_folder($domain, $user, $learn_folder);
+                }
+            } elsif (not defined $number_of_messages) {
+                log_msg('error', "  Failed to extract the number of messages for folder '$learn_folder'!");
             } else {
-                log_msg('error', "  Failed to run sa:learn_cmd '$cmd': $!");
-            }
-            if ( $do_purge and ($conf{'mailbox:remove_' . $learn} =~ /^[yY]/) ) {
-                # delete learned mails
-                log_msg('notice', "  Purging learned $learn mails from folder '$learn_folder'");
-                purge_mailbox_folder($domain, $user, $learn_folder);
-            }
-        }
+                log_msg('debug', "  No new messages in folder '$learn_folder' found!");
+	    }
+	}
     }
 }
 
