@@ -100,6 +100,7 @@ our %conf = (
     'imap:unixhierarchysep'     => 'yes',
     'imap:purge_cmd'            => '/usr/lib/cyrus/bin/ipurge',
     'imap:mbpath_cmd'           => '/usr/lib/cyrus/bin/mbpath',
+    'imap:mbexamine_cmd'        => '/usr/lib/cyrus/bin/mbexamine',
     'imap:user'                 => 'cyrus',
     'imap:userprefix'           => 'user',
     'imap:domainprefix'         => 'domain',
@@ -299,7 +300,8 @@ foreach my $mbx (sort @mailboxes) {
             my $mbox_glob = $conf{'imap:mbox_glob'};
             
             my $mailbox_folder = get_imap_folder_name($domain, $user, $learn_folder);
-            my $mbexamine_output = `mbexamine "$mailbox_folder"`;
+            my $mbexamine_cmd = $conf{'imap:mbexamine_cmd'};
+            my $mbexamine_output = `$mbexamine_cmd "$mailbox_folder"`;
             my ($number_of_messages) = $mbexamine_output =~ /Number of Messages:\s+(\d+)/;
             if ((defined $number_of_messages) and ($number_of_messages > 0)) {
 	        log_msg('debug', "Number of Messages not purged so far: $number_of_messages");
